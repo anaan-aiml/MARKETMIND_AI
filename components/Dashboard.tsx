@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { AppState, GroundingSource } from '../types';
+import React, { useState, useEffect } from "react";
+import { AppState, GroundingSource } from "../types";
 import {
   AreaChart,
   Area,
@@ -8,8 +8,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer
-} from 'recharts';
-import { getMarketIntelligence } from '../services/groqService';
+} from "recharts";
+import { getMarketIntelligence } from "../services/groqService";
 
 interface Props {
   state: AppState;
@@ -17,7 +17,6 @@ interface Props {
 }
 
 const Dashboard: React.FC<Props> = ({ state }) => {
-
   const [marketPulse, setMarketPulse] = useState<{
     text: string;
     sources: GroundingSource[];
@@ -28,7 +27,7 @@ const Dashboard: React.FC<Props> = ({ state }) => {
   const [voicesLoaded, setVoicesLoaded] = useState(false);
 
   /* =========================
-     LOAD VOICES SAFELY
+     LOAD VOICES PROPERLY
   ========================= */
   useEffect(() => {
     if (!("speechSynthesis" in window)) return;
@@ -49,34 +48,33 @@ const Dashboard: React.FC<Props> = ({ state }) => {
   }, []);
 
   /* =========================
-     SAFE SPEAK FUNCTION
+     IMPROVED SPEAK FUNCTION
   ========================= */
   const speak = (text: string) => {
-    try {
-      if (!voiceEnabled) return;
-      if (!voicesLoaded) return;
-      if (!("speechSynthesis" in window)) return;
+    if (!voiceEnabled) return;
+    if (!("speechSynthesis" in window)) return;
 
+    try {
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
       const voices = window.speechSynthesis.getVoices();
 
       const preferred =
-        voices.find(v => v.name.includes("Google US English")) ||
-        voices.find(v => v.name.includes("Microsoft")) ||
-        voices.find(v => v.name.includes("Samantha")) ||
-        voices.find(v => v.lang === "en-US");
+        voices.find(v => v.lang === "en-US" && v.localService) ||
+        voices.find(v => v.lang.startsWith("en")) ||
+        voices[0];
 
       if (preferred) utterance.voice = preferred;
 
-      utterance.rate = 0.9;
+      utterance.rate = 1;
       utterance.pitch = 1;
       utterance.volume = 1;
 
+      window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
-    } catch (err) {
-      console.error("Speech error:", err);
+    } catch (error) {
+      console.error("Speech synthesis error:", error);
     }
   };
 
@@ -87,24 +85,22 @@ const Dashboard: React.FC<Props> = ({ state }) => {
   };
 
   /* =========================
-     FETCH MARKET PULSE SAFE
+     FETCH MARKET PULSE
   ========================= */
   const fetchPulse = async () => {
+    setIsPulseLoading(true);
     try {
-      setIsPulseLoading(true);
-
       const data = await getMarketIntelligence();
-
-      if (data && data.text) {
-        setMarketPulse(data);
-      } else {
-        setMarketPulse({
-          text: "Market pulse unavailable.",
-          sources: []
-        });
-      }
-    } catch (e) {
-      console.error('Pulse error', e);
+      setMarketPulse(
+        data?.text
+          ? data
+          : {
+              text: "Market pulse unavailable.",
+              sources: []
+            }
+      );
+    } catch (error) {
+      console.error("Pulse error:", error);
       setMarketPulse({
         text: "Unable to fetch market pulse.",
         sources: []
@@ -119,23 +115,26 @@ const Dashboard: React.FC<Props> = ({ state }) => {
   }, []);
 
   /* =========================
-     EXECUTIVE BRIEFING SAFE
+     EXECUTIVE BRIEFING
   ========================= */
   const handleBriefing = () => {
-    if (!state?.insights || state.insights.length === 0) return;
+    if (!state?.insights?.length) return;
 
     const summary = state.insights
-      .map(i => `${i.title} is ${i.value}. Change ${i.percentage}.`)
+      .map(
+        i =>
+          `${i.title} is ${i.value}. Change ${i.percentage}.`
+      )
       .join(" ");
 
     speak(`Executive briefing activated. ${summary}`);
   };
 
-  if (!state) return null;
+  const safeInsights = state?.insights ?? [];
+  const safeSalesData = state?.salesData ?? [];
 
   return (
     <div className="space-y-10">
-
       {/* HEADER */}
       <header className="flex items-end justify-between">
         <div>
@@ -148,9 +147,11 @@ const Dashboard: React.FC<Props> = ({ state }) => {
         </div>
 
         <div className="flex gap-4">
-
           <button
-            onClick={() => setVoiceEnabled(prev => !prev)}
+            onClick={() => {
+              setVoiceEnabled(prev => !prev);
+              window.speechSynthesis.resume();
+            }}
             className={`px-6 py-3 rounded-xl text-xs font-black uppercase transition ${
               voiceEnabled
                 ? "bg-emerald-600 text-white"
@@ -188,7 +189,7 @@ const Dashboard: React.FC<Props> = ({ state }) => {
 
       {/* METRICS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-        {state?.insights?.map(insight => (
+        {safeInsights.map(insight => (
           <div
             key={insight.id}
             className="p-6 rounded-xl border border-slate-800 bg-slate-900"
@@ -204,9 +205,9 @@ const Dashboard: React.FC<Props> = ({ state }) => {
 
               <span
                 className={`text-xs font-black px-2 py-1 rounded ${
-                  insight.trend === 'up'
-                    ? 'bg-emerald-500/10 text-emerald-400'
-                    : 'bg-rose-500/10 text-rose-400'
+                  insight.trend === "up"
+                    ? "bg-emerald-500/10 text-emerald-400"
+                    : "bg-rose-500/10 text-rose-400"
                 }`}
               >
                 {insight.percentage}
@@ -216,7 +217,9 @@ const Dashboard: React.FC<Props> = ({ state }) => {
             {voiceEnabled && (
               <button
                 onClick={() =>
-                  speak(`${insight.title}. Value ${insight.value}. Change ${insight.percentage}`)
+                  speak(
+                    `${insight.title}. Value ${insight.value}. Change ${insight.percentage}`
+                  )
                 }
                 className="mt-4 text-xs text-cyan-400 uppercase"
               >
@@ -229,14 +232,13 @@ const Dashboard: React.FC<Props> = ({ state }) => {
 
       {/* CHART + MARKET PULSE */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
         <div className="lg:col-span-2 p-8 rounded-xl border border-slate-800 bg-slate-900 h-[450px]">
           <h3 className="text-xs text-slate-500 uppercase mb-6">
             Revenue Velocity Matrix
           </h3>
 
           <ResponsiveContainer width="100%" height="85%">
-            <AreaChart data={state?.salesData || []}>
+            <AreaChart data={safeSalesData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
               <XAxis dataKey="name" stroke="#64748b" />
               <YAxis stroke="#64748b" />
@@ -258,7 +260,7 @@ const Dashboard: React.FC<Props> = ({ state }) => {
           </h3>
 
           <div className="flex-1 overflow-y-auto text-sm text-slate-300 italic">
-            {marketPulse?.text || 'Pulse Standby'}
+            {marketPulse?.text || "Pulse Standby"}
           </div>
 
           {voiceEnabled && marketPulse && (

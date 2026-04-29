@@ -21,13 +21,19 @@ import { INITIAL_STATE } from './constants';
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isThinking, setIsThinking] = useState(false);
   const [user, setUser] = useState<{ name: string; email: string; avatar: string; isDemo?: boolean } | null>(null);
 
+  /* =========================
+     SAFE INITIAL STATE LOAD
+  ========================= */
   const [state, setState] = useState<AppState>(() => {
-    const saved = localStorage.getItem('marketmind_state');
-    const initial = { ...INITIAL_STATE, productAnalysis: [] };
-    return saved ? JSON.parse(saved) : initial;
+    try {
+      const saved = localStorage.getItem('marketmind_state');
+      const initial = { ...INITIAL_STATE, productAnalysis: [] };
+      return saved ? JSON.parse(saved) : initial;
+    } catch {
+      return { ...INITIAL_STATE, productAnalysis: [] };
+    }
   });
 
   /* =========================
@@ -44,28 +50,39 @@ const App: React.FC = () => {
   };
 
   /* =========================
-     DEMO CSV INJECTION (FIX)
+     SAFE DEMO CSV INJECTION
   ========================= */
   useEffect(() => {
-    if (!state.rawCsv || state.rawCsv.trim() === '') {
-      updateState({
-        rawCsv: `Product,Revenue,Forecast,Growth,Status
+    setState(prev => {
+      if (!prev.rawCsv || prev.rawCsv.trim() === '') {
+        return {
+          ...prev,
+          rawCsv: `Product,Revenue,Forecast,Growth,Status
 CloudSync,120000,150000,+25%,trending
 DataPulse,90000,70000,-8%,declining
 AdIntel,60000,90000,+18%,stable`
-      });
-    }
+        };
+      }
+      return prev;
+    });
   }, []);
 
   /* =========================
-     ENV CHECK (VITE SAFE)
+     ENV CHECK
   ========================= */
   const isMockMode =
     !import.meta.env.VITE_GROQ_API_KEY ||
     import.meta.env.VITE_GROQ_API_KEY === '';
 
+  /* =========================
+     PERSIST STATE
+  ========================= */
   useEffect(() => {
-    localStorage.setItem('marketmind_state', JSON.stringify(state));
+    try {
+      localStorage.setItem('marketmind_state', JSON.stringify(state));
+    } catch {
+      // ignore storage errors
+    }
   }, [state]);
 
   const handleLogin = (userData: { name: string; email: string; avatar: string; isDemo?: boolean }) => {
